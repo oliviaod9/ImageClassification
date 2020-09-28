@@ -14,43 +14,43 @@ import subprocess
 import numpy as np
 import time
 
-import tensorflow as tf
+#import tensorflow as tf
 
 
 #
-# CNN_Image_Classifier
+# CNN_Object_Detector
 #
 
-class CNN_Image_Classifier(ScriptedLoadableModule):
+class CNN_Object_Detector(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "CNN_Image_Classifier" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["ImageClassification"]
+    self.parent.title = "CNN_Object_Detector" # TODO make this more human readable by adding spaces
+    self.parent.categories = ["ObjectDetection"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Rebecca Hisey (Perk Lab)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Rebecca Hisey (Perk Lab)", "Olivia O'Driscoll (Perk Lab)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This extension allows for the training and use of a convolutional neural network (inception v3) to classify images 
+This extension allows for the training and use of a convolutional neural network (inception v3) to do object detection
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
 """ # replace with organization, grant and thanks.
 
 #
-# CNN_Image_ClassifierWidget
+# CNN_Object_DetectorWidget
 #
 
-class CNN_Image_ClassifierWidget(ScriptedLoadableModuleWidget):
+class CNN_Object_DetectorWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    self.logic = CNN_Image_ClassifierLogic()
+    self.logic = CNN_Object_DetectorLogic()
     self.moduleDir = os.path.dirname(slicer.modules.collect_training_images.path)
 
     # Instantiate and connect widgets ...
@@ -67,7 +67,7 @@ class CNN_Image_ClassifierWidget(ScriptedLoadableModuleWidget):
 
     self.modelSelector = qt.QComboBox()
     self.modelSelector.addItems(["Select model"])
-    modelDirectoryContents = os.listdir(os.path.join(self.moduleDir, os.pardir, "Models"))
+    modelDirectoryContents = os.listdir(os.path.join(self.moduleDir, "Models"))
     modelNames = [dir for dir in modelDirectoryContents if dir.find(".") == -1 and dir != "Dockerfile"]
     self.modelSelector.addItems(["Create new model"])
     self.modelSelector.addItems(modelNames)
@@ -91,8 +91,8 @@ class CNN_Image_ClassifierWidget(ScriptedLoadableModuleWidget):
     # Object table
     #
     self.objectTable = qt.QTableWidget()
-    self.objectTable.setColumnCount(3)
-    self.objectTable.setHorizontalHeaderLabels(["Name","Found","Confidence"])
+    self.objectTable.setColumnCount(6)
+    self.objectTable.setHorizontalHeaderLabels(["Name","xmin","ymin","width","height","Confidence"])
     parametersFormLayout.addRow(self.objectTable)
 
     #
@@ -158,6 +158,12 @@ class CNN_Image_ClassifierWidget(ScriptedLoadableModuleWidget):
     self.webcamConnectorNode.Start()
     self.setupWebcamResliceDriver()
 
+    self.imgMsgConnectorNode = self.createImgMsgPlusConnector()
+    self.webcamConnectorNode.Start()
+
+    self.stringConnectorNode = self.createStringPlusConnector()
+    self.stringConnectorNode.Start()
+
   def selectRecordingNode(self):
     sequenceNodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSequenceBrowserNode')
     selectedNode = sequenceNodes.GetItemAsObject(0)
@@ -179,39 +185,32 @@ class CNN_Image_ClassifierWidget(ScriptedLoadableModuleWidget):
       webcamConnectorNode.SetTypeClient(hostName, int(port))
       logging.debug('Webcam PlusConnector Created')
     return webcamConnectorNode
-  '''
-  def createClassifierConnector(self):
+  
+  def createImgMsgPlusConnector(self):
     try:
-        classifierConnectorNode = slicer.util.getNode('ClassifierPlusConnector')
+        imgMsgConnectorNode = slicer.util.getNode('ImgMsgPlusConnector')
     except slicer.util.MRMLNodeNotFoundException:
-    #if not webcamConnectorNode:
-      classifierConnectorNode = slicer.vtkMRMLIGTLConnectorNode()
-      #webcamConnectorNode.SetLogErrorIfServerConnectionFailed(False)
-      classifierConnectorNode.SetName('ClassifierPlusConnector')
-      slicer.mrmlScene.AddNode(classifierConnectorNode)
-      # hostNamePort = self.parameterNode.GetParameter('PlusWebcamServerHostNamePort')
+      imgMsgConnectorNode = slicer.vtkMRMLIGTLConnectorNode()
+      imgMsgConnectorNode.SetName('ImgMsgPlusConnector')
+      slicer.mrmlScene.AddNode(imgMsgConnectorNode)
       hostNamePort = "localhost:18946"
       [hostName, port] = hostNamePort.split(':')
-      classifierConnectorNode.SetTypeServer(int(port))
-      logging.debug('Webcam Classifier Connector Created')
-    return classifierConnectorNode
+      webcamConnectorNode.SetTypeClient(hostName, int(port))
+      logging.debug('Image Message PlusConnector Created')
+    return imgMsgConnectorNode
 
-  def createLabelConnector(self):
-      try:
-          labelConnectorNode = slicer.util.getNode('LabelClassifierPlusConnector')
-      except slicer.util.MRMLNodeNotFoundException:
-          # if not webcamConnectorNode:
-          labelConnectorNode = slicer.vtkMRMLIGTLConnectorNode()
-          # webcamConnectorNode.SetLogErrorIfServerConnectionFailed(False)
-          labelConnectorNode.SetName('LabelClassifierPlusConnector')
-          slicer.mrmlScene.AddNode(labelConnectorNode)
-          # hostNamePort = self.parameterNode.GetParameter('PlusWebcamServerHostNamePort')
-          hostNamePort = "localhost:18947"
-          [hostName, port] = hostNamePort.split(':')
-          labelConnectorNode.SetTypeClient(hostName, int(port))
-          logging.debug('Label Classifier Connector Created')
-      return labelConnectorNode
-  '''
+  def createStringPlusConnector(self):
+    try:
+        stringConnectorNode = slicer.util.getNode('StringPlusConnector')
+    except slicer.util.MRMLNodeNotFoundException:
+      stringConnectorNode = slicer.vtkMRMLIGTLConnectorNode()
+      stringConnectorNode.SetName('StringPlusConnector')
+      slicer.mrmlScene.AddNode(stringConnectorNode)
+      hostNamePort = "localhost:18947"
+      [hostName, port] = hostNamePort.split(':')
+      stringConnectorNode.SetTypeClient(hostName, int(port))
+      logging.debug('String PlusConnector Created')
+    return stringConnectorNode
 
 
   def setupWebcamResliceDriver(self):
@@ -254,22 +253,22 @@ class CNN_Image_ClassifierWidget(ScriptedLoadableModuleWidget):
   def onModelSelected(self):
     if self.modelSelector.currentText != "Select model":
       self.applyButton.enabled = True
-      self.currentModelDirectory = os.path.join(self.moduleDir, os.pardir, "Models", self.modelSelector.currentText)
+      self.currentModelDirectory = os.path.join(self.moduleDir, "Models", self.modelSelector.currentText)
       modelObjectClasses = os.listdir(os.path.join(self.currentModelDirectory,"training_photos"))
       self.currentObjectClasses = [dir for dir in modelObjectClasses if dir.find(".") == -1]
       self.objectTable.setRowCount(len(self.currentObjectClasses))
       for i in range (len(self.currentObjectClasses)):
         self.objectTable.setItem(i,0,qt.QTableWidgetItem(self.currentObjectClasses[i]))
-        self.objectTable.setItem(i,1,qt.QTableWidgetItem("No"))
+        #self.objectTable.setItem(i,1,qt.QTableWidgetItem("No"))
 
   def onConfidenceChanged(self):
     self.confidenceLabel.text = str(self.confidenceSlider.sliderPosition) + "%"
 
 #
-# CNN_Image_ClassifierLogic
+# CNN_Object_DetectorLogic
 #
 
-class CNN_Image_ClassifierLogic(ScriptedLoadableModuleLogic):
+class CNN_Object_DetectorLogic(ScriptedLoadableModuleLogic):
 
   def run(self,objectTable,confidenceSlider,modelName):
     self.moduleDir = os.path.dirname(slicer.modules.collect_training_images.path)
@@ -464,12 +463,16 @@ class CNN_Image_ClassifierLogic(ScriptedLoadableModuleLogic):
   def updateObjectTable(self):
     for i in range(self.numObjects):
       if self.currentLabel == str.lower(str(self.objectTable.item(i,0).text())) and float(self.confidences[i]) > self.confidenceSlider.value/100.0:
-        self.objectTable.setItem(i,1,qt.QTableWidgetItem("Yes"))
-        self.objectTable.setItem(i,2,qt.QTableWidgetItem(str(round(self.confidences[i]*100,2))))
+        #self.objectTable.setItem(i,1,qt.QTableWidgetItem("Yes"))
+        self.objectTable.setItem(i,5,qt.QTableWidgetItem(str(round(self.confidences[i]*100,2))))
         self.currentConfidence = self.confidences[i]
+        self.objectTable.setItem(i,1,7)
+        self.objectTable.setItem(i,2,7)
+        self.objectTable.setItem(i,3,7)
+        self.objectTable.setItem(i,4,7)
       else:
-        self.objectTable.setItem(i, 1, qt.QTableWidgetItem("No"))
-        self.objectTable.setItem(i, 2, qt.QTableWidgetItem(str(round(self.confidences[i]*100,2))))
+        s#elf.objectTable.setItem(i, 1, qt.QTableWidgetItem("No"))
+        self.objectTable.setItem(i, 5, qt.QTableWidgetItem(str(round(self.confidences[i]*100,2))))
 
   def getFoundObject(self):
     imgClass = 0
@@ -491,7 +494,7 @@ class CNN_Image_ClassifierLogic(ScriptedLoadableModuleLogic):
 
 
 
-class CNN_Image_ClassifierTest(ScriptedLoadableModuleTest):
+class CNN_Object_DetectorTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -507,9 +510,9 @@ class CNN_Image_ClassifierTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_CNN_Image_Classifier1()
+    self.test_CNN_Object_Detector1()
 
-  def test_CNN_Image_Classifier1(self):
+  def test_CNN_Object_Detector1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -541,6 +544,6 @@ class CNN_Image_ClassifierTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = CNN_Image_ClassifierLogic()
+    logic = CNN_Object_DetectorLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

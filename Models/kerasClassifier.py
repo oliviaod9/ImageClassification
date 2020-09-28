@@ -36,7 +36,7 @@ def loadLSTMModel(modelFolder, testID):
 
 def classifyImage(image,prevSequence,cnnModel,lstmModel):
 
-    labels = ['anesthetic','dilator','insert_catheter','insert_guidewire','insert_needle','nothing','remove_guidewire','scalpel']
+    labels = ['anesthetic','catheter','dilator','guidewire','guidewire_casing','nothing','scalpel','syringe']
     toolLabels = ['anesthetic','catheter','dilator','guidewire','guidewire_casing','nothing','scalpel','syringe']
     resized = cv2.resize(image, (224, 224))
     resized = numpy.expand_dims(resized,axis=0)
